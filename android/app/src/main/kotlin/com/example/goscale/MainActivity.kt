@@ -1,0 +1,5 @@
+package com.example.goscale
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
