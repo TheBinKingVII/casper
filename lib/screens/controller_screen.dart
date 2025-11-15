@@ -1,4 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:goscale/providers/control_provider.dart';
+import 'package:goscale/providers/device_provider.dart';
+import 'package:goscale/providers/settings_provider.dart';
+import 'package:goscale/models/device_status_model.dart';
 
 class ControllerScreen extends StatefulWidget {
   const ControllerScreen({super.key});
@@ -8,9 +14,60 @@ class ControllerScreen extends StatefulWidget {
 }
 
 class _ControllerScreenState extends State<ControllerScreen> {
-  bool _isPowerOn = false;
-  double _currentWeight = 1250.5; // Example weight in kg
-  double _maxWeight = 5000.0; // Maximum weight capacity
+  Timer? _statusTimer;
+  DeviceStatusModel? _deviceStatus;
+  double _currentWeight = 0.0;
+  double _maxWeight = 5000.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load status pertama kali dan setup auto-refresh
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDeviceStatus();
+      _loadMaxWeight();
+      // Auto-refresh setiap 2 detik
+      _statusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+        _loadDeviceStatus();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadDeviceStatus() async {
+    final deviceProvider = context.read<DeviceProvider>();
+    if (!deviceProvider.isConnected) return;
+
+    try {
+      final status = await deviceProvider.loadDeviceStatus();
+      if (status != null && mounted) {
+        setState(() {
+          _deviceStatus = status;
+          _currentWeight = status.currentWeight;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading device status: $e');
+    }
+  }
+
+  Future<void> _loadMaxWeight() async {
+    final settingsProvider = context.read<SettingsProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+    if (deviceProvider.isConnected) {
+      await settingsProvider.loadMaxWeight(deviceId: deviceProvider.deviceId);
+      if (mounted && settingsProvider.maxWeight != null) {
+        setState(() {
+          _maxWeight = settingsProvider.maxWeight!;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,46 +103,119 @@ class _ControllerScreenState extends State<ControllerScreen> {
                       left: isSmallScreen ? 16.0 : 24.0,
                       right: isSmallScreen ? 16.0 : 24.0,
                     ),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _isPowerOn
-                              ? Colors.green.withOpacity(0.2)
-                              : Colors.grey.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _isPowerOn ? Colors.green : Colors.grey,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: _isPowerOn ? Colors.green : Colors.grey,
-                                shape: BoxShape.circle,
-                              ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Overload Warning
+                        if (_deviceStatus?.isOverload == true)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _isPowerOn ? 'Aktif' : 'Nonaktif',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.warning,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'OVERLOAD!',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          const SizedBox.shrink(),
+                        // Status Indicator
+                        Row(
+                          children: [
+                            Consumer<DeviceProvider>(
+                              builder: (context, dp, _) {
+                                if (dp.isLoading) {
+                                  return const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return IconButton(
+                                  onPressed: _loadDeviceStatus,
+                                  icon: const Icon(
+                                    Icons.refresh,
+                                    color: Colors.white,
+                                  ),
+                                  tooltip: 'Refresh Status',
+                                  iconSize: 20,
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: (_deviceStatus?.motorEnabled ?? false)
+                                    ? Colors.green.withOpacity(0.2)
+                                    : Colors.grey.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: (_deviceStatus?.motorEnabled ?? false)
+                                      ? Colors.green
+                                      : Colors.grey,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          (_deviceStatus?.motorEnabled ?? false)
+                                          ? Colors.green
+                                          : Colors.grey,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    (_deviceStatus?.motorEnabled ?? false)
+                                        ? 'Aktif'
+                                        : 'Nonaktif',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
+                      ],
                     ),
                   ),
                   Expanded(
@@ -96,6 +226,7 @@ class _ControllerScreenState extends State<ControllerScreen> {
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           // Weight Display
                           Text(
@@ -105,105 +236,169 @@ class _ControllerScreenState extends State<ControllerScreen> {
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                          SizedBox(height: isSmallScreen ? 12 : 16),
+                          SizedBox(height: isSmallScreen ? 8 : 12),
                           // Current Weight
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _currentWeight.toStringAsFixed(1),
-                                style: theme.textTheme.displayLarge?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: isSmallScreen ? 48 : 64,
-                                ),
-                              ),
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  top: isSmallScreen ? 12 : 16,
-                                ),
-                                child: Text(
-                                  ' kg',
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    color: Colors.white.withOpacity(0.8),
-                                    fontSize: isSmallScreen ? 18 : 22,
+                          Consumer<DeviceProvider>(
+                            builder: (context, deviceProv, _) {
+                              final currentWeight =
+                                  _deviceStatus?.currentWeight ??
+                                  _currentWeight;
+                              final isOverload =
+                                  _deviceStatus?.isOverload ?? false;
+
+                              return Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    currentWeight.toStringAsFixed(1),
+                                    style: theme.textTheme.displayLarge
+                                        ?.copyWith(
+                                          color: isOverload
+                                              ? Colors.red.shade300
+                                              : Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: isSmallScreen ? 48 : 64,
+                                        ),
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: isSmallScreen ? 20 : 32),
-                          // Weight Progress Bar
-                          Container(
-                            width: screenWidth * 0.8,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: FractionallySizedBox(
-                              alignment: Alignment.centerLeft,
-                              widthFactor: _currentWeight / _maxWeight,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.white,
-                                      Colors.white.withOpacity(0.8),
-                                    ],
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      top: isSmallScreen ? 12 : 16,
+                                    ),
+                                    child: Text(
+                                      ' gram',
+                                      style: theme.textTheme.titleLarge
+                                          ?.copyWith(
+                                            color: Colors.white.withOpacity(
+                                              0.8,
+                                            ),
+                                            fontSize: isSmallScreen ? 18 : 22,
+                                          ),
+                                    ),
                                   ),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          // Weight Info
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '0 kg',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.white.withOpacity(0.7),
-                                ),
-                              ),
-                              Text(
-                                '${_maxWeight.toInt()} kg',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.white.withOpacity(0.7),
-                                ),
-                              ),
-                            ],
+                                ],
+                              );
+                            },
                           ),
                           SizedBox(height: isSmallScreen ? 16 : 24),
-                          // Additional Info Cards
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _InfoCard(
-                                  icon: Icons.straighten,
-                                  label: 'Berat Maks',
-                                  value: '${_maxWeight.toInt()} kg',
-                                  theme: theme,
-                                  isSmallScreen: isSmallScreen,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _InfoCard(
-                                  icon: Icons.percent,
-                                  label: 'Kapasitas',
-                                  value:
-                                      '${((_currentWeight / _maxWeight) * 100).toStringAsFixed(1)}%',
-                                  theme: theme,
-                                  isSmallScreen: isSmallScreen,
-                                ),
-                              ),
-                            ],
+                          // Weight Progress Bar
+                          Consumer2<DeviceProvider, SettingsProvider>(
+                            builder: (context, deviceProv, settingsProv, _) {
+                              final maxWeight =
+                                  settingsProv.maxWeight ?? _maxWeight;
+                              final currentWeight =
+                                  _deviceStatus?.currentWeight ??
+                                  _currentWeight;
+                              final isOverload =
+                                  _deviceStatus?.isOverload ?? false;
+                              final progress = maxWeight > 0
+                                  ? (currentWeight / maxWeight).clamp(0.0, 1.0)
+                                  : 0.0;
+
+                              return Column(
+                                children: [
+                                  Container(
+                                    width: screenWidth * 0.8,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor: progress,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: isOverload
+                                                ? [
+                                                    Colors.red,
+                                                    Colors.red.withOpacity(0.8),
+                                                  ]
+                                                : [
+                                                    Colors.white,
+                                                    Colors.white.withOpacity(
+                                                      0.8,
+                                                    ),
+                                                  ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Weight Info
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '0 gram',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: Colors.white.withOpacity(
+                                                0.7,
+                                              ),
+                                            ),
+                                      ),
+                                      Text(
+                                        '${maxWeight.toInt()} gram',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: Colors.white.withOpacity(
+                                                0.7,
+                                              ),
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
                           ),
-                          SizedBox(height: isSmallScreen ? 8 : 16),
+                          SizedBox(height: isSmallScreen ? 12 : 16),
+                          // Additional Info Cards
+                          Consumer2<DeviceProvider, SettingsProvider>(
+                            builder: (context, deviceProv, settingsProv, _) {
+                              final maxWeight =
+                                  settingsProv.maxWeight ?? _maxWeight;
+                              final currentWeight =
+                                  _deviceStatus?.currentWeight ??
+                                  _currentWeight;
+                              final capacity = maxWeight > 0
+                                  ? ((currentWeight / maxWeight) * 100)
+                                        .toStringAsFixed(1)
+                                  : '0.0';
+
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: _InfoCard(
+                                      icon: Icons.straighten,
+                                      label: 'Berat Maks',
+                                      value: '${maxWeight.toInt()} gram',
+                                      theme: theme,
+                                      isSmallScreen: isSmallScreen,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _InfoCard(
+                                      icon: Icons.percent,
+                                      label: 'Kapasitas',
+                                      value: '$capacity%',
+                                      theme: theme,
+                                      isSmallScreen: isSmallScreen,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          SizedBox(height: isSmallScreen ? 4 : 8),
                         ],
                       ),
                     ),
@@ -252,66 +447,72 @@ class _ControllerScreenState extends State<ControllerScreen> {
                                   ),
                                 ),
                                 SizedBox(height: isCompact ? 12 : 20),
-                                // Up Button
-                                DpadButton(
-                                  icon: Icons.keyboard_arrow_up,
-                                  onPressed: () {
-                                    _handleDirection('up');
-                                  },
-                                  theme: theme,
-                                  size: isCompact ? 50 : 60,
-                                ),
-                                SizedBox(height: isCompact ? 6 : 8),
-                                // Left, Center, Right Buttons
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    DpadButton(
-                                      icon: Icons.keyboard_arrow_left,
-                                      onPressed: () {
-                                        _handleDirection('left');
-                                      },
+                                // Up Button (Forward)
+                                Consumer<ControlProvider>(
+                                  builder: (context, cp, _) {
+                                    return DpadButton(
+                                      icon: Icons.keyboard_arrow_up,
+                                      onPressed: cp.isLoading
+                                          ? null
+                                          : () {
+                                              _handleForward(context);
+                                            },
                                       theme: theme,
                                       size: isCompact ? 50 : 60,
-                                    ),
-                                    SizedBox(width: isCompact ? 8 : 12),
-                                    // Center indicator or stop button
-                                    Container(
-                                      width: isCompact ? 50 : 60,
-                                      height: isCompact ? 50 : 60,
-                                      decoration: BoxDecoration(
-                                        color:
-                                            theme.colorScheme.primaryContainer,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.stop,
-                                        color: theme
-                                            .colorScheme
-                                            .onPrimaryContainer,
-                                        size: isCompact ? 20 : 24,
-                                      ),
-                                    ),
-                                    SizedBox(width: isCompact ? 8 : 12),
-                                    DpadButton(
-                                      icon: Icons.keyboard_arrow_right,
-                                      onPressed: () {
-                                        _handleDirection('right');
-                                      },
-                                      theme: theme,
-                                      size: isCompact ? 50 : 60,
-                                    ),
-                                  ],
+                                    );
+                                  },
                                 ),
                                 SizedBox(height: isCompact ? 6 : 8),
-                                // Down Button
-                                DpadButton(
-                                  icon: Icons.keyboard_arrow_down,
-                                  onPressed: () {
-                                    _handleDirection('down');
+                                // Stop Button (Center)
+                                Consumer<ControlProvider>(
+                                  builder: (context, cp, _) {
+                                    return Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap: cp.isLoading
+                                            ? null
+                                            : () {
+                                                _handleStop(context);
+                                              },
+                                        borderRadius: BorderRadius.circular(
+                                          (isCompact ? 50 : 60) / 2,
+                                        ),
+                                        child: Container(
+                                          width: isCompact ? 50 : 60,
+                                          height: isCompact ? 50 : 60,
+                                          decoration: BoxDecoration(
+                                            color: theme
+                                                .colorScheme
+                                                .errorContainer,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            Icons.stop,
+                                            color: theme
+                                                .colorScheme
+                                                .onErrorContainer,
+                                            size: isCompact ? 20 : 24,
+                                          ),
+                                        ),
+                                      ),
+                                    );
                                   },
-                                  theme: theme,
-                                  size: isCompact ? 50 : 60,
+                                ),
+                                SizedBox(height: isCompact ? 6 : 8),
+                                // Down Button (Reverse)
+                                Consumer<ControlProvider>(
+                                  builder: (context, cp, _) {
+                                    return DpadButton(
+                                      icon: Icons.keyboard_arrow_down,
+                                      onPressed: cp.isLoading
+                                          ? null
+                                          : () {
+                                              _handleReverse(context);
+                                            },
+                                      theme: theme,
+                                      size: isCompact ? 50 : 60,
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -325,7 +526,7 @@ class _ControllerScreenState extends State<ControllerScreen> {
                           ),
                           color: theme.colorScheme.outline.withOpacity(0.2),
                         ),
-                        // Power Switch Section
+                        // Speed Control Section
                         Expanded(
                           flex: 2,
                           child: SingleChildScrollView(
@@ -333,69 +534,84 @@ class _ControllerScreenState extends State<ControllerScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  'Power',
+                                  'Kecepatan',
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 SizedBox(height: isCompact ? 16 : 24),
-                                // Power Switch Container
-                                Container(
-                                  padding: EdgeInsets.all(isCompact ? 16 : 24),
-                                  decoration: BoxDecoration(
-                                    color: _isPowerOn
-                                        ? theme.colorScheme.secondaryContainer
-                                        : theme
-                                              .colorScheme
-                                              .surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: _isPowerOn
-                                          ? theme.colorScheme.secondary
-                                          : theme.colorScheme.outline,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _isPowerOn
-                                            ? Icons.power
-                                            : Icons.power_off,
-                                        size: isCompact ? 36 : 48,
-                                        color: _isPowerOn
-                                            ? theme.colorScheme.secondary
-                                            : theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
+                                // Speed Control Container
+                                Consumer<ControlProvider>(
+                                  builder: (context, cp, _) {
+                                    return Container(
+                                      padding: EdgeInsets.all(
+                                        isCompact ? 16 : 24,
                                       ),
-                                      SizedBox(height: isCompact ? 12 : 16),
-                                      Switch(
-                                        value: _isPowerOn,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _isPowerOn = value;
-                                          });
-                                        },
-                                        activeColor:
-                                            theme.colorScheme.secondary,
+                                      decoration: BoxDecoration(
+                                        color: theme
+                                            .colorScheme
+                                            .secondaryContainer,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: theme.colorScheme.secondary,
+                                          width: 2,
+                                        ),
                                       ),
-                                      SizedBox(height: isCompact ? 6 : 8),
-                                      Text(
-                                        _isPowerOn ? 'ON' : 'OFF',
-                                        style: theme.textTheme.titleSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                              color: _isPowerOn
-                                                  ? theme.colorScheme.secondary
-                                                  : theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                            ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.speed,
+                                            size: isCompact ? 36 : 48,
+                                            color: theme.colorScheme.secondary,
+                                          ),
+                                          SizedBox(height: isCompact ? 12 : 16),
+                                          Text(
+                                            '${cp.currentSpeed}%',
+                                            style: theme.textTheme.headlineSmall
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: theme
+                                                      .colorScheme
+                                                      .onSecondaryContainer,
+                                                ),
+                                          ),
+                                          SizedBox(height: isCompact ? 12 : 16),
+                                          Slider(
+                                            value: cp.currentSpeed.toDouble(),
+                                            min: 0,
+                                            max: 100,
+                                            divisions: 20,
+                                            label: '${cp.currentSpeed}%',
+                                            onChanged: (value) {
+                                              cp.setSpeed(value.toInt());
+                                            },
+                                            activeColor:
+                                                theme.colorScheme.secondary,
+                                          ),
+                                          SizedBox(height: isCompact ? 6 : 8),
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceEvenly,
+                                            children: [
+                                              TextButton(
+                                                onPressed: () {
+                                                  cp.setSpeed(80);
+                                                },
+                                                child: const Text('80%'),
+                                              ),
+                                              TextButton(
+                                                onPressed: () {
+                                                  cp.setSpeed(100);
+                                                },
+                                                child: const Text('100%'),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -413,10 +629,115 @@ class _ControllerScreenState extends State<ControllerScreen> {
     );
   }
 
-  void _handleDirection(String direction) {
-    // Handle direction button press
-    debugPrint('Direction: $direction');
-    // You can add API calls or state management here
+  Future<void> _handleForward(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.forward(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah maju berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah maju';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleReverse(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.reverse(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah mundur berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah mundur';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleStop(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.stop(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah stop berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah stop';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
   }
 }
 
@@ -475,45 +796,65 @@ class _InfoCard extends StatelessWidget {
 
 class DpadButton extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final ThemeData theme;
   final double size;
 
   const DpadButton({
     super.key,
     required this.icon,
-    required this.onPressed,
+    this.onPressed,
     required this.theme,
     this.size = 60,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isEnabled = onPressed != null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
         onLongPress: onPressed,
         borderRadius: BorderRadius.circular(size / 2),
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [theme.colorScheme.primary, theme.colorScheme.tertiary],
+        child: Opacity(
+          opacity: isEnabled ? 1.0 : 0.5,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              gradient: isEnabled
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        theme.colorScheme.primary,
+                        theme.colorScheme.tertiary,
+                      ],
+                    )
+                  : null,
+              color: isEnabled
+                  ? null
+                  : theme.colorScheme.surfaceContainerHighest,
+              shape: BoxShape.circle,
+              boxShadow: isEnabled
+                  ? [
+                      BoxShadow(
+                        color: theme.colorScheme.primary.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
             ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: theme.colorScheme.primary.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            child: Icon(
+              icon,
+              color: isEnabled
+                  ? Colors.white
+                  : theme.colorScheme.onSurfaceVariant,
+              size: size * 0.53,
+            ),
           ),
-          child: Icon(icon, color: Colors.white, size: size * 0.53),
         ),
       ),
     );

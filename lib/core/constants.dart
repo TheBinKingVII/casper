@@ -1,6 +1,7 @@
 class AppConstants {
   // API Configuration
-  static const String baseUrl = 'https://smart-car-api-production.up.railway.app/api';
+  static const String baseUrl =
+      'https://smart-car-api-production.up.railway.app/api';
   static const String apiVersion = 'v1';
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
@@ -13,7 +14,7 @@ class AppConstants {
   static const String languageKey = 'language';
 
   // App Information
-  static const String appName = 'Inscore App';
+  static const String appName = 'Goscale App';
   static const String appVersion = '1.0.0';
 
   // Validation
@@ -40,7 +41,8 @@ class AppConstants {
   static const String saveSuccess = 'Data saved successfully';
 
   // Regex Patterns
-  static const String emailRegex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
+  static const String emailRegex =
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
   static const String phoneRegex = r'^\+?[\d\s\-\(\)]+$';
 
   // Image Paths
