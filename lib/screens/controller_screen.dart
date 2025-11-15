@@ -26,8 +26,8 @@ class _ControllerScreenState extends State<ControllerScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadDeviceStatus();
       _loadMaxWeight();
-      // Auto-refresh setiap 2 detik
-      _statusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      // Auto-refresh setiap 1 detik
+      _statusTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         _loadDeviceStatus();
       });
     });
@@ -153,32 +153,6 @@ class _ControllerScreenState extends State<ControllerScreen> {
                         // Status Indicator
                         Row(
                           children: [
-                            Consumer<DeviceProvider>(
-                              builder: (context, dp, _) {
-                                if (dp.isLoading) {
-                                  return const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  );
-                                }
-                                return IconButton(
-                                  onPressed: _loadDeviceStatus,
-                                  icon: const Icon(
-                                    Icons.refresh,
-                                    color: Colors.white,
-                                  ),
-                                  tooltip: 'Refresh Status',
-                                  iconSize: 20,
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
