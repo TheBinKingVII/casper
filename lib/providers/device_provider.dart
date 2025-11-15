@@ -34,7 +34,7 @@ class DeviceProvider extends ChangeNotifier {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
-    
+
     // Validasi panjang device_id (maksimal 100 karakter)
     if (deviceId.length > 100) {
       _isLoading = false;
@@ -42,7 +42,7 @@ class DeviceProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-    
+
     try {
       final result = await _api.registerDevice(
         deviceId: deviceId,
@@ -79,17 +79,30 @@ class DeviceProvider extends ChangeNotifier {
       return null;
     }
 
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
     try {
+      debugPrint('DeviceProvider: Loading device status for $_deviceId');
       final response = await _api.getDeviceStatus(_deviceId!);
+      debugPrint('DeviceProvider: Response received: $response');
+
       _deviceStatus = DeviceStatusModel.fromJson(response);
+      debugPrint(
+        'DeviceProvider: Parsed status - currentWeight: ${_deviceStatus?.currentWeight}, isOverload: ${_deviceStatus?.isOverload}',
+      );
+
+      _isLoading = false;
       notifyListeners();
       return _deviceStatus;
     } catch (e) {
+      _isLoading = false;
       _errorMessage = e.toString();
-      debugPrint('Error loading device status: $e');
+      debugPrint('DeviceProvider: Error loading device status: $e');
+      debugPrint('DeviceProvider: Stack trace: ${StackTrace.current}');
       notifyListeners();
       return null;
     }
   }
 }
-

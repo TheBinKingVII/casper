@@ -41,18 +41,29 @@ class _ControllerScreenState extends State<ControllerScreen> {
 
   Future<void> _loadDeviceStatus() async {
     final deviceProvider = context.read<DeviceProvider>();
-    if (!deviceProvider.isConnected) return;
+    if (!deviceProvider.isConnected) {
+      debugPrint(
+        'ControllerScreen: Device not connected, skipping status load',
+      );
+      return;
+    }
 
     try {
+      debugPrint('ControllerScreen: Loading device status...');
       final status = await deviceProvider.loadDeviceStatus();
       if (status != null && mounted) {
+        debugPrint(
+          'ControllerScreen: Status loaded - currentWeight: ${status.currentWeight}, isOverload: ${status.isOverload}',
+        );
         setState(() {
           _deviceStatus = status;
           _currentWeight = status.currentWeight;
         });
+      } else {
+        debugPrint('ControllerScreen: Status is null or widget not mounted');
       }
     } catch (e) {
-      debugPrint('Error loading device status: $e');
+      debugPrint('ControllerScreen: Error loading device status: $e');
     }
   }
 

@@ -47,8 +47,31 @@ class ApiServices {
   /// 3. Get Device Status
   /// -------------------------------
   Future<Map<String, dynamic>> getDeviceStatus(String deviceId) async {
-    final response = await _dio.get('/api/devices/$deviceId/status');
-    return response.data;
+    try {
+      debugPrint('=== API getDeviceStatus Request ===');
+      debugPrint('URL: $baseUrl/devices/$deviceId/status');
+      debugPrint('Method: GET');
+
+      final response = await _dio.get('/devices/$deviceId/status');
+
+      debugPrint('=== API getDeviceStatus Response ===');
+      debugPrint('Status: ${response.statusCode}');
+      debugPrint('Response: ${response.data}');
+
+      return response.data;
+    } on DioException catch (e) {
+      debugPrint('=== API getDeviceStatus Error ===');
+      debugPrint('Error Type: ${e.type}');
+      debugPrint('Error Message: ${e.message}');
+
+      if (e.response != null) {
+        debugPrint('Status Code: ${e.response?.statusCode}');
+        debugPrint('Response Data: ${e.response?.data}');
+      }
+
+      debugPrint('Request URL: ${e.requestOptions.uri}');
+      rethrow;
+    }
   }
 
   /// -------------------------------
