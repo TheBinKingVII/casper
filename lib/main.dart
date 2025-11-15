@@ -5,8 +5,14 @@ import 'package:provider/provider.dart';
 import 'providers/device_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/control_provider.dart';
+import 'services/notification_service.dart';
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize notification service
+  await NotificationService().initialize();
+
   runApp(const MainApp());
 }
 

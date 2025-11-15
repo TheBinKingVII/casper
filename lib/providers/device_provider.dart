@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:goscale/services/api_service.dart';
+import 'package:goscale/services/notification_service.dart';
 import 'package:goscale/shared/device_prefs.dart';
 import 'package:goscale/models/device_status_model.dart';
 
@@ -7,12 +8,14 @@ class DeviceProvider extends ChangeNotifier {
   DeviceProvider({ApiServices? api}) : _api = api ?? ApiServices();
 
   final ApiServices _api;
+  final NotificationService _notificationService = NotificationService();
 
   bool _isLoading = false;
   String? _errorMessage;
   Map<String, dynamic>? _lastRegisterResult;
   String? _deviceId;
   DeviceStatusModel? _deviceStatus;
+  bool _lastOverloadState = false;
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -103,6 +106,29 @@ class DeviceProvider extends ChangeNotifier {
       debugPrint('DeviceProvider: Stack trace: ${StackTrace.current}');
       notifyListeners();
       return null;
+    }
+  }
+
+  /// Check overload status and show notification with max weight (called from controller screen)
+  Future<void> checkOverloadWithMaxWeight(double maxWeight) async {
+    if (_deviceStatus != null) {
+      final isOverload = _deviceStatus!.isOverload;
+      final currentWeight = _deviceStatus!.currentWeight;
+
+      if (isOverload != _lastOverloadState) {
+        _lastOverloadState = isOverload;
+
+        if (isOverload) {
+          await _notificationService.showOverloadNotification(
+            currentWeight: currentWeight,
+            maxWeight: maxWeight,
+          );
+        } else {
+          await _notificationService.showRecoveryNotification(
+            currentWeight: currentWeight,
+          );
+        }
+      }
     }
   }
 }

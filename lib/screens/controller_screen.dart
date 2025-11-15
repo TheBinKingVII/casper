@@ -59,6 +59,11 @@ class _ControllerScreenState extends State<ControllerScreen> {
           _deviceStatus = status;
           _currentWeight = status.currentWeight;
         });
+
+        // Check overload with max weight for notification
+        final settingsProvider = context.read<SettingsProvider>();
+        final maxWeight = settingsProvider.maxWeight ?? _maxWeight;
+        await deviceProvider.checkOverloadWithMaxWeight(maxWeight);
       } else {
         debugPrint('ControllerScreen: Status is null or widget not mounted');
       }
