@@ -36,7 +36,15 @@ class _HomeScreenState extends State<HomeScreen> {
               _maxWeight = value;
               _maxWeightController.text = _maxWeight.toStringAsFixed(0);
             });
+          } else if (mounted && settingsProv.errorMessage != null) {
+            // Log error tapi tetap gunakan nilai default
+            debugPrint(
+              'HomeScreen: Error loading max weight: ${settingsProv.errorMessage}',
+            );
           }
+        }).catchError((e) {
+          debugPrint('HomeScreen: Exception loading max weight: $e');
+          // Tetap gunakan nilai default jika ada error
         });
       }
     });

@@ -24,13 +24,103 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final id = deviceId ?? await DevicePrefs.getDeviceId();
-      final resp = await _api.getMaxWeight(deviceId: id);
+
+      // Debug logging
+      debugPrint('LoadMaxWeight - Device ID: "$id"');
+
+      Map<String, dynamic> resp;
+
+      // Coba load dengan device_id terlebih dahulu
+      try {
+        resp = await _api.getMaxWeight(deviceId: id);
+
+        // Jika response menunjukkan error 500 atau success=false, coba fallback
+        if ((resp['success'] == false ||
+                (resp['error'] as String?)?.contains('500') == true) &&
+            id != null) {
+          debugPrint(
+            'LoadMaxWeight - Device-specific load failed. '
+            'Trying global setting as fallback...',
+          );
+          try {
+            resp = await _api.getMaxWeight(deviceId: null);
+          } catch (fallbackError) {
+            // Jika fallback juga gagal, gunakan response asli
+            debugPrint('LoadMaxWeight - Fallback also failed: $fallbackError');
+          }
+        }
+      } on DioException catch (e) {
+        // Jika error 500 dan ada device_id, coba fallback ke global setting
+        if (e.response?.statusCode == 500 && id != null) {
+          debugPrint(
+            'LoadMaxWeight - Device-specific load failed with 500. '
+            'Trying global setting as fallback...',
+          );
+          try {
+            resp = await _api.getMaxWeight(deviceId: null);
+          } catch (fallbackError) {
+            // Jika fallback juga gagal, parse error response
+            if (fallbackError is DioException &&
+                fallbackError.response?.data != null) {
+              resp = fallbackError.response!.data as Map<String, dynamic>;
+            } else {
+              rethrow;
+            }
+          }
+        } else {
+          // Jika bukan error 500 atau tidak ada device_id, parse error response
+          if (e.response?.data != null) {
+            resp = e.response!.data as Map<String, dynamic>;
+          } else {
+            rethrow;
+          }
+        }
+      }
+
+      // Debug logging response
+      debugPrint('LoadMaxWeight - Response: $resp');
+
+      // Handle response structure
+      if (resp['success'] == false) {
+        // Jika response menunjukkan error, handle dengan baik
+        final errorMsg =
+            resp['error'] as String? ?? 'Gagal memuat berat maksimal';
+        debugPrint('LoadMaxWeight - Server returned error: $errorMsg');
+        _errorMessage = errorMsg;
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
       final data = (resp['data'] as Map?)?.cast<String, dynamic>() ?? resp;
       _maxWeight = (data['max_weight'] as num?)?.toDouble();
       _isLoading = false;
       notifyListeners();
+    } on DioException catch (e) {
+      _isLoading = false;
+
+      // Handle DioException dengan lebih detail
+      if (e.response != null && e.response?.data != null) {
+        final errorData = e.response!.data;
+        String? serverError;
+
+        if (errorData is Map<String, dynamic>) {
+          serverError =
+              errorData['error'] as String? ?? errorData['message'] as String?;
+        } else if (errorData is String) {
+          serverError = errorData;
+        }
+
+        debugPrint('LoadMaxWeight - Error: $serverError');
+        _errorMessage = serverError ?? 'Gagal memuat berat maksimal';
+      } else {
+        _errorMessage = 'Network error: ${e.message}';
+      }
+
+      notifyListeners();
     } catch (e) {
       _isLoading = false;
+      debugPrint('LoadMaxWeight - Unexpected error: $e');
       _errorMessage = e.toString();
       notifyListeners();
     }

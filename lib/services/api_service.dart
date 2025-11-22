@@ -78,11 +78,42 @@ class ApiServices {
   /// 4. Get Max Weight Setting
   /// -------------------------------
   Future<Map<String, dynamic>> getMaxWeight({String? deviceId}) async {
-    final response = await _dio.get(
-      '/settings',
-      queryParameters: {if (deviceId != null) 'device_id': deviceId},
-    );
-    return response.data;
+    try {
+      debugPrint('=== API getMaxWeight Request ===');
+      debugPrint('URL: $baseUrl/settings');
+      debugPrint('Method: GET');
+      debugPrint(
+        'Query Parameters: ${deviceId != null ? {'device_id': deviceId} : {}}',
+      );
+
+      final response = await _dio.get(
+        '/settings',
+        queryParameters: {if (deviceId != null) 'device_id': deviceId},
+      );
+
+      debugPrint('=== API getMaxWeight Response ===');
+      debugPrint('Status: ${response.statusCode}');
+      debugPrint('Response: ${response.data}');
+
+      return response.data;
+    } on DioException catch (e) {
+      debugPrint('=== API getMaxWeight Error ===');
+      debugPrint('Error Type: ${e.type}');
+      debugPrint('Error Message: ${e.message}');
+
+      if (e.response != null) {
+        debugPrint('Status Code: ${e.response?.statusCode}');
+        debugPrint('Response Data: ${e.response?.data}');
+        debugPrint('Request URL: ${e.requestOptions.uri}');
+
+        // Jika server mengembalikan error response dengan body
+        if (e.response?.data != null) {
+          return e.response!.data as Map<String, dynamic>;
+        }
+      }
+
+      rethrow;
+    }
   }
 
   /// -------------------------------

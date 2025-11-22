@@ -76,11 +76,21 @@ class _ControllerScreenState extends State<ControllerScreen> {
     final settingsProvider = context.read<SettingsProvider>();
     final deviceProvider = context.read<DeviceProvider>();
     if (deviceProvider.isConnected) {
-      await settingsProvider.loadMaxWeight(deviceId: deviceProvider.deviceId);
-      if (mounted && settingsProvider.maxWeight != null) {
-        setState(() {
-          _maxWeight = settingsProvider.maxWeight!;
-        });
+      try {
+        await settingsProvider.loadMaxWeight(deviceId: deviceProvider.deviceId);
+        if (mounted && settingsProvider.maxWeight != null) {
+          setState(() {
+            _maxWeight = settingsProvider.maxWeight!;
+          });
+        } else if (mounted && settingsProvider.errorMessage != null) {
+          // Log error tapi tetap gunakan nilai default
+          debugPrint(
+            'ControllerScreen: Error loading max weight: ${settingsProvider.errorMessage}',
+          );
+        }
+      } catch (e) {
+        debugPrint('ControllerScreen: Exception loading max weight: $e');
+        // Tetap gunakan nilai default jika ada error
       }
     }
   }
