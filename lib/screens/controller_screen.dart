@@ -17,7 +17,8 @@ class _ControllerScreenState extends State<ControllerScreen> {
   Timer? _statusTimer;
   DeviceStatusModel? _deviceStatus;
   double _currentWeight = 0.0;
-  double _maxWeight = 5000.0;
+  double _maxWeight =
+      1000.0; // Default fallback, akan diupdate dari SettingsProvider
 
   @override
   void initState() {
@@ -78,15 +79,21 @@ class _ControllerScreenState extends State<ControllerScreen> {
     if (deviceProvider.isConnected) {
       try {
         await settingsProvider.loadMaxWeight(deviceId: deviceProvider.deviceId);
-        if (mounted && settingsProvider.maxWeight != null) {
-          setState(() {
-            _maxWeight = settingsProvider.maxWeight!;
-          });
-        } else if (mounted && settingsProvider.errorMessage != null) {
-          // Log error tapi tetap gunakan nilai default
-          debugPrint(
-            'ControllerScreen: Error loading max weight: ${settingsProvider.errorMessage}',
-          );
+        if (mounted) {
+          // Update _maxWeight dari SettingsProvider jika tersedia
+          if (settingsProvider.maxWeight != null) {
+            setState(() {
+              _maxWeight = settingsProvider.maxWeight!;
+            });
+            debugPrint(
+              'ControllerScreen: Max weight updated to ${settingsProvider.maxWeight}',
+            );
+          } else if (settingsProvider.errorMessage != null) {
+            // Log error tapi tetap gunakan nilai default
+            debugPrint(
+              'ControllerScreen: Error loading max weight: ${settingsProvider.errorMessage}',
+            );
+          }
         }
       } catch (e) {
         debugPrint('ControllerScreen: Exception loading max weight: $e');
@@ -284,6 +291,7 @@ class _ControllerScreenState extends State<ControllerScreen> {
                           // Weight Progress Bar
                           Consumer2<DeviceProvider, SettingsProvider>(
                             builder: (context, deviceProv, settingsProv, _) {
+                              // Selalu gunakan maxWeight dari SettingsProvider jika tersedia
                               final maxWeight =
                                   settingsProv.maxWeight ?? _maxWeight;
                               final currentWeight =
@@ -435,7 +443,6 @@ class _ControllerScreenState extends State<ControllerScreen> {
                       children: [
                         // D-pad Section
                         Expanded(
-                          flex: 3,
                           child: SingleChildScrollView(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -463,40 +470,78 @@ class _ControllerScreenState extends State<ControllerScreen> {
                                   },
                                 ),
                                 SizedBox(height: isCompact ? 6 : 8),
-                                // Stop Button (Center)
-                                Consumer<ControlProvider>(
-                                  builder: (context, cp, _) {
-                                    return Material(
-                                      color: Colors.transparent,
-                                      child: InkWell(
-                                        onTap: cp.isLoading
-                                            ? null
-                                            : () {
-                                                _handleStop(context);
-                                              },
-                                        borderRadius: BorderRadius.circular(
-                                          (isCompact ? 50 : 60) / 2,
-                                        ),
-                                        child: Container(
-                                          width: isCompact ? 50 : 60,
-                                          height: isCompact ? 50 : 60,
-                                          decoration: BoxDecoration(
-                                            color: theme
-                                                .colorScheme
-                                                .errorContainer,
-                                            shape: BoxShape.circle,
+                                // Left and Right Buttons Row
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    // Left Button
+                                    Consumer<ControlProvider>(
+                                      builder: (context, cp, _) {
+                                        return DpadButton(
+                                          icon: Icons.keyboard_arrow_left,
+                                          onPressed: cp.isLoading
+                                              ? null
+                                              : () {
+                                                  _handleLeft(context);
+                                                },
+                                          theme: theme,
+                                          size: isCompact ? 50 : 60,
+                                        );
+                                      },
+                                    ),
+                                    SizedBox(width: isCompact ? 12 : 16),
+                                    // Stop Button (Center)
+                                    Consumer<ControlProvider>(
+                                      builder: (context, cp, _) {
+                                        return Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: cp.isLoading
+                                                ? null
+                                                : () {
+                                                    _handleStop(context);
+                                                  },
+                                            borderRadius: BorderRadius.circular(
+                                              (isCompact ? 50 : 60) / 2,
+                                            ),
+                                            child: Container(
+                                              width: isCompact ? 50 : 60,
+                                              height: isCompact ? 50 : 60,
+                                              decoration: BoxDecoration(
+                                                color: theme
+                                                    .colorScheme
+                                                    .errorContainer,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Icon(
+                                                Icons.stop,
+                                                color: theme
+                                                    .colorScheme
+                                                    .onErrorContainer,
+                                                size: isCompact ? 20 : 24,
+                                              ),
+                                            ),
                                           ),
-                                          child: Icon(
-                                            Icons.stop,
-                                            color: theme
-                                                .colorScheme
-                                                .onErrorContainer,
-                                            size: isCompact ? 20 : 24,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                        );
+                                      },
+                                    ),
+                                    SizedBox(width: isCompact ? 12 : 16),
+                                    // Right Button
+                                    Consumer<ControlProvider>(
+                                      builder: (context, cp, _) {
+                                        return DpadButton(
+                                          icon: Icons.keyboard_arrow_right,
+                                          onPressed: cp.isLoading
+                                              ? null
+                                              : () {
+                                                  _handleRight(context);
+                                                },
+                                          theme: theme,
+                                          size: isCompact ? 50 : 60,
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
                                 SizedBox(height: isCompact ? 6 : 8),
                                 // Down Button (Reverse)
@@ -511,105 +556,6 @@ class _ControllerScreenState extends State<ControllerScreen> {
                                             },
                                       theme: theme,
                                       size: isCompact ? 50 : 60,
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // Divider
-                        Container(
-                          width: 1,
-                          margin: EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 12 : 16,
-                          ),
-                          color: theme.colorScheme.outline.withOpacity(0.2),
-                        ),
-                        // Speed Control Section
-                        Expanded(
-                          flex: 2,
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Kecepatan',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                SizedBox(height: isCompact ? 16 : 24),
-                                // Speed Control Container
-                                Consumer<ControlProvider>(
-                                  builder: (context, cp, _) {
-                                    return Container(
-                                      padding: EdgeInsets.all(
-                                        isCompact ? 16 : 24,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: theme
-                                            .colorScheme
-                                            .secondaryContainer,
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: theme.colorScheme.secondary,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.speed,
-                                            size: isCompact ? 36 : 48,
-                                            color: theme.colorScheme.secondary,
-                                          ),
-                                          SizedBox(height: isCompact ? 12 : 16),
-                                          Text(
-                                            '${cp.currentSpeed}%',
-                                            style: theme.textTheme.headlineSmall
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSecondaryContainer,
-                                                ),
-                                          ),
-                                          SizedBox(height: isCompact ? 12 : 16),
-                                          Slider(
-                                            value: cp.currentSpeed.toDouble(),
-                                            min: 0,
-                                            max: 100,
-                                            divisions: 20,
-                                            label: '${cp.currentSpeed}%',
-                                            onChanged: (value) {
-                                              cp.setSpeed(value.toInt());
-                                            },
-                                            activeColor:
-                                                theme.colorScheme.secondary,
-                                          ),
-                                          SizedBox(height: isCompact ? 6 : 8),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceEvenly,
-                                            children: [
-                                              TextButton(
-                                                onPressed: () {
-                                                  cp.setSpeed(80);
-                                                },
-                                                child: const Text('80%'),
-                                              ),
-                                              TextButton(
-                                                onPressed: () {
-                                                  cp.setSpeed(100);
-                                                },
-                                                child: const Text('100%'),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
                                     );
                                   },
                                 ),
@@ -739,6 +685,80 @@ class _ControllerScreenState extends State<ControllerScreen> {
       );
     }
   }
+
+  Future<void> _handleLeft(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.left(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah kiri berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah kiri';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleRight(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.right(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah kanan berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah kanan';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
 }
 
 class _InfoCard extends StatelessWidget {
@@ -797,6 +817,8 @@ class _InfoCard extends StatelessWidget {
 class DpadButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
+  final VoidCallback? onPressedDown;
+  final VoidCallback? onPressedUp;
   final ThemeData theme;
   final double size;
 
@@ -804,58 +826,76 @@ class DpadButton extends StatelessWidget {
     super.key,
     required this.icon,
     this.onPressed,
+    this.onPressedDown,
+    this.onPressedUp,
     required this.theme,
     this.size = 60,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isEnabled = onPressed != null;
+    final isEnabled = onPressed != null || onPressedDown != null;
+
+    Widget button = Opacity(
+      opacity: isEnabled ? 1.0 : 0.5,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          gradient: isEnabled
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.tertiary,
+                  ],
+                )
+              : null,
+          color: isEnabled ? null : theme.colorScheme.surfaceContainerHighest,
+          shape: BoxShape.circle,
+          boxShadow: isEnabled
+              ? [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(
+          icon,
+          color: isEnabled ? Colors.white : theme.colorScheme.onSurfaceVariant,
+          size: size * 0.53,
+        ),
+      ),
+    );
+
+    // Jika ada onPressedDown/onPressedUp, gunakan GestureDetector
+    if (onPressedDown != null || onPressedUp != null) {
+      return GestureDetector(
+        onTapDown: onPressedDown != null ? (_) => onPressedDown!() : null,
+        onTapUp: onPressedUp != null ? (_) => onPressedUp!() : null,
+        onTapCancel: onPressedUp != null ? () => onPressedUp!() : null,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(size / 2),
+            child: button,
+          ),
+        ),
+      );
+    }
+
+    // Jika hanya onPressed, gunakan InkWell biasa
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        onLongPress: onPressed,
         borderRadius: BorderRadius.circular(size / 2),
-        child: Opacity(
-          opacity: isEnabled ? 1.0 : 0.5,
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              gradient: isEnabled
-                  ? LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        theme.colorScheme.primary,
-                        theme.colorScheme.tertiary,
-                      ],
-                    )
-                  : null,
-              color: isEnabled
-                  ? null
-                  : theme.colorScheme.surfaceContainerHighest,
-              shape: BoxShape.circle,
-              boxShadow: isEnabled
-                  ? [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Icon(
-              icon,
-              color: isEnabled
-                  ? Colors.white
-                  : theme.colorScheme.onSurfaceVariant,
-              size: size * 0.53,
-            ),
-          ),
-        ),
+        child: button,
       ),
     );
   }

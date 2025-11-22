@@ -85,5 +85,21 @@ class ControlProvider extends ChangeNotifier {
       deviceId: deviceId,
     );
   }
+
+  Future<bool> left({int? speed, String? deviceId}) async {
+    return sendControlCommand(
+      direction: 'left',
+      speed: speed ?? 100,
+      deviceId: deviceId,
+    );
+  }
+
+  Future<bool> right({int? speed, String? deviceId}) async {
+    return sendControlCommand(
+      direction: 'right',
+      speed: speed ?? 100,
+      deviceId: deviceId,
+    );
+  }
 }
 
