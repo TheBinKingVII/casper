@@ -106,7 +106,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     json as Map<String, dynamic>,
                   );
                 } catch (e) {
-                  debugPrint('Error parsing log: $e');
                   return null;
                 }
               })

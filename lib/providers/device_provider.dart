@@ -87,23 +87,14 @@ class DeviceProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('DeviceProvider: Loading device status for $_deviceId');
       final response = await _api.getDeviceStatus(_deviceId!);
-      debugPrint('DeviceProvider: Response received: $response');
-
       _deviceStatus = DeviceStatusModel.fromJson(response);
-      debugPrint(
-        'DeviceProvider: Parsed status - currentWeight: ${_deviceStatus?.currentWeight}, isOverload: ${_deviceStatus?.isOverload}',
-      );
-
       _isLoading = false;
       notifyListeners();
       return _deviceStatus;
     } catch (e) {
       _isLoading = false;
       _errorMessage = e.toString();
-      debugPrint('DeviceProvider: Error loading device status: $e');
-      debugPrint('DeviceProvider: Stack trace: ${StackTrace.current}');
       notifyListeners();
       return null;
     }

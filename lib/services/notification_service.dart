@@ -41,9 +41,6 @@ class NotificationService {
 
     if (initialized != null && initialized) {
       _isInitialized = true;
-      debugPrint('NotificationService: Initialized successfully');
-    } else {
-      debugPrint('NotificationService: Initialization failed');
     }
 
     // Request permissions for Android 13+
@@ -59,15 +56,12 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
-      final granted = await androidImplementation.requestNotificationsPermission();
-      debugPrint('NotificationService: Android permission granted: $granted');
+      await androidImplementation.requestNotificationsPermission();
     }
   }
 
   /// Handle notification tap
-  void _onNotificationTapped(NotificationResponse response) {
-    debugPrint('NotificationService: Notification tapped: ${response.id}');
-  }
+  void _onNotificationTapped(NotificationResponse _) {}
 
   /// Show overload notification
   Future<void> showOverloadNotification({
@@ -115,10 +109,6 @@ class NotificationService {
       'Berat mobil ${currentWeight.toStringAsFixed(1)} gram melebihi batas maksimal ${maxWeight.toStringAsFixed(1)} gram',
       notificationDetails,
     );
-
-    debugPrint(
-      'NotificationService: Overload notification shown - Weight: $currentWeight, Max: $maxWeight',
-    );
   }
 
   /// Show recovery notification (when overload is resolved)
@@ -165,15 +155,12 @@ class NotificationService {
       'Berat mobil kembali normal: ${currentWeight.toStringAsFixed(1)} gram',
       notificationDetails,
     );
-
-    debugPrint('NotificationService: Recovery notification shown - Weight: $currentWeight');
   }
 
   /// Cancel all notifications
   Future<void> cancelAll() async {
     await _notifications.cancelAll();
     _lastOverloadState = false;
-    debugPrint('NotificationService: All notifications cancelled');
   }
 }
 

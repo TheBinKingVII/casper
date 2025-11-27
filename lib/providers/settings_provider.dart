@@ -25,9 +25,6 @@ class SettingsProvider extends ChangeNotifier {
     try {
       final id = deviceId ?? await DevicePrefs.getDeviceId();
 
-      // Debug logging
-      debugPrint('LoadMaxWeight - Device ID: "$id"');
-
       Map<String, dynamic> resp;
 
       // Coba load dengan device_id terlebih dahulu
@@ -38,24 +35,13 @@ class SettingsProvider extends ChangeNotifier {
         if ((resp['success'] == false ||
                 (resp['error'] as String?)?.contains('500') == true) &&
             id != null) {
-          debugPrint(
-            'LoadMaxWeight - Device-specific load failed. '
-            'Trying global setting as fallback...',
-          );
           try {
             resp = await _api.getMaxWeight(deviceId: null);
-          } catch (fallbackError) {
-            // Jika fallback juga gagal, gunakan response asli
-            debugPrint('LoadMaxWeight - Fallback also failed: $fallbackError');
-          }
+          } catch (fallbackError) {}
         }
       } on DioException catch (e) {
         // Jika error 500 dan ada device_id, coba fallback ke global setting
         if (e.response?.statusCode == 500 && id != null) {
-          debugPrint(
-            'LoadMaxWeight - Device-specific load failed with 500. '
-            'Trying global setting as fallback...',
-          );
           try {
             resp = await _api.getMaxWeight(deviceId: null);
           } catch (fallbackError) {
@@ -77,15 +63,11 @@ class SettingsProvider extends ChangeNotifier {
         }
       }
 
-      // Debug logging response
-      debugPrint('LoadMaxWeight - Response: $resp');
-
       // Handle response structure
       if (resp['success'] == false) {
         // Jika response menunjukkan error, handle dengan baik
         final errorMsg =
             resp['error'] as String? ?? 'Gagal memuat berat maksimal';
-        debugPrint('LoadMaxWeight - Server returned error: $errorMsg');
         _errorMessage = errorMsg;
         _isLoading = false;
         notifyListeners();
@@ -111,7 +93,6 @@ class SettingsProvider extends ChangeNotifier {
           serverError = errorData;
         }
 
-        debugPrint('LoadMaxWeight - Error: $serverError');
         _errorMessage = serverError ?? 'Gagal memuat berat maksimal';
       } else {
         _errorMessage = 'Network error: ${e.message}';
@@ -120,7 +101,6 @@ class SettingsProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _isLoading = false;
-      debugPrint('LoadMaxWeight - Unexpected error: $e');
       _errorMessage = e.toString();
       notifyListeners();
     }
@@ -139,15 +119,6 @@ class SettingsProvider extends ChangeNotifier {
       // Trim whitespace jika ada
       if (id != null) {
         id = id.trim();
-      }
-
-      // Debug logging
-      if (id != null) {
-        debugPrint('UpdateMaxWeight - Device ID: "$id" (length: ${id.length})');
-      } else {
-        debugPrint(
-          'UpdateMaxWeight - Device ID: null (will update global setting)',
-        );
       }
 
       // Pastikan device_id tidak kosong string setelah trim
@@ -207,9 +178,6 @@ class SettingsProvider extends ChangeNotifier {
         } else if (errorData is String) {
           serverError = errorData;
         }
-
-        // Debug logging
-        debugPrint('Server error response: $errorData');
 
         // Handle database error messages
         if (serverError != null) {

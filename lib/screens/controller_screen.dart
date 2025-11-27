@@ -43,19 +43,12 @@ class _ControllerScreenState extends State<ControllerScreen> {
   Future<void> _loadDeviceStatus() async {
     final deviceProvider = context.read<DeviceProvider>();
     if (!deviceProvider.isConnected) {
-      debugPrint(
-        'ControllerScreen: Device not connected, skipping status load',
-      );
       return;
     }
 
     try {
-      debugPrint('ControllerScreen: Loading device status...');
       final status = await deviceProvider.loadDeviceStatus();
       if (status != null && mounted) {
-        debugPrint(
-          'ControllerScreen: Status loaded - currentWeight: ${status.currentWeight}, isOverload: ${status.isOverload}',
-        );
         setState(() {
           _deviceStatus = status;
           _currentWeight = status.currentWeight;
@@ -65,12 +58,8 @@ class _ControllerScreenState extends State<ControllerScreen> {
         final settingsProvider = context.read<SettingsProvider>();
         final maxWeight = settingsProvider.maxWeight ?? _maxWeight;
         await deviceProvider.checkOverloadWithMaxWeight(maxWeight);
-      } else {
-        debugPrint('ControllerScreen: Status is null or widget not mounted');
       }
-    } catch (e) {
-      debugPrint('ControllerScreen: Error loading device status: $e');
-    }
+    } catch (_) {}
   }
 
   Future<void> _loadMaxWeight() async {
@@ -85,18 +74,9 @@ class _ControllerScreenState extends State<ControllerScreen> {
             setState(() {
               _maxWeight = settingsProvider.maxWeight!;
             });
-            debugPrint(
-              'ControllerScreen: Max weight updated to ${settingsProvider.maxWeight}',
-            );
-          } else if (settingsProvider.errorMessage != null) {
-            // Log error tapi tetap gunakan nilai default
-            debugPrint(
-              'ControllerScreen: Error loading max weight: ${settingsProvider.errorMessage}',
-            );
           }
         }
-      } catch (e) {
-        debugPrint('ControllerScreen: Exception loading max weight: $e');
+      } catch (_) {
         // Tetap gunakan nilai default jika ada error
       }
     }

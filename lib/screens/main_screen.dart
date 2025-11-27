@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:goscale/screens/controller_screen.dart';
 import 'package:goscale/screens/home_screen.dart';
-import 'package:goscale/screens/settings_screen.dart';
+import 'package:goscale/screens/history_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
