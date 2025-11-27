@@ -257,18 +257,4 @@ class Helpers {
     return '${(bytes / (1 << (i * 10))).toStringAsFixed(1)} ${suffixes[i]}';
   }
 
-  // Debug helpers
-  static void debugLog(String message, {String tag = 'DEBUG'}) {
-    debugPrint('[$tag] $message');
-  }
-
-  static void debugLogError(
-    String message, [
-    dynamic error,
-    StackTrace? stackTrace,
-  ]) {
-    debugPrint('[ERROR] $message');
-    if (error != null) debugPrint('Error: $error');
-    if (stackTrace != null) debugPrint('StackTrace: $stackTrace');
-  }
 }

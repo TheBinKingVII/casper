@@ -3,7 +3,17 @@ import 'package:dio/dio.dart';
 
 class ApiServices {
   static const String baseUrl = AppConstants.baseUrl;
-  final Dio _dio = Dio(BaseOptions(baseUrl: baseUrl));
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: baseUrl,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      connectTimeout: AppConstants.connectTimeout,
+      receiveTimeout: AppConstants.receiveTimeout,
+    ),
+  );
 
   /// -------------------------------
   /// 1. Health Check
@@ -36,16 +46,30 @@ class ApiServices {
   /// 3. Get Device Status
   /// -------------------------------
   Future<Map<String, dynamic>> getDeviceStatus(String deviceId) async {
-    final response = await _dio.get('/devices/$deviceId/status');
-    return response.data;
+    try {
+      final response = await _dio.get('/devices/$deviceId/status');
+      return response.data;
+    } on DioException {
+      rethrow;
+    }
   }
 
   /// -------------------------------
   /// 4. Get Max Weight Setting
   /// -------------------------------
-  Future<Map<String, dynamic>> getMaxWeight() async {
-    final response = await _dio.get('/settings');
-    return response.data;
+  Future<Map<String, dynamic>> getMaxWeight({String? deviceId}) async {
+    try {
+      final response = await _dio.get(
+        '/settings',
+        queryParameters: {if (deviceId != null) 'device_id': deviceId},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response != null && e.response?.data != null) {
+        return e.response!.data as Map<String, dynamic>;
+      }
+      rethrow;
+    }
   }
 
   /// -------------------------------
@@ -55,14 +79,47 @@ class ApiServices {
     required double maxWeight,
     String? deviceId,
   }) async {
-    final response = await _dio.post(
-      '/settings',
-      data: {
+    try {
+      // Trim dan validasi device_id sebelum dikirim
+      String? trimmedDeviceId;
+      if (deviceId != null) {
+        trimmedDeviceId = deviceId.trim();
+        if (trimmedDeviceId.isEmpty) {
+          trimmedDeviceId = null;
+        } else if (trimmedDeviceId.length > 100) {
+          throw Exception(
+            'Device ID terlalu panjang (${trimmedDeviceId.length} karakter, maksimal 100)',
+          );
+        }
+      }
+
+      // Pastikan max_weight adalah number
+      final requestData = <String, dynamic>{
         'max_weight': maxWeight,
-        if (deviceId != null) 'device_id': deviceId,
-      },
-    );
-    return response.data;
+        if (trimmedDeviceId != null && trimmedDeviceId.isNotEmpty)
+          'device_id': trimmedDeviceId,
+      };
+
+      final response = await _dio.post(
+        '/settings',
+        data: requestData,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        ),
+      );
+
+      return response.data;
+    } on DioException catch (e) {
+      // Jika server mengembalikan error response dengan body
+      if (e.response != null && e.response?.data != null) {
+        return e.response!.data as Map<String, dynamic>;
+      }
+      // Jika tidak ada response body, throw ulang
+      rethrow;
+    }
   }
 
   /// -------------------------------

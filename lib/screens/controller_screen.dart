@@ -1,4 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:goscale/providers/control_provider.dart';
+import 'package:goscale/providers/device_provider.dart';
+import 'package:goscale/providers/settings_provider.dart';
+import 'package:goscale/models/device_status_model.dart';
 
 class ControllerScreen extends StatefulWidget {
   const ControllerScreen({super.key});
@@ -8,9 +14,73 @@ class ControllerScreen extends StatefulWidget {
 }
 
 class _ControllerScreenState extends State<ControllerScreen> {
-  bool _isPowerOn = false;
-  double _currentWeight = 1250.5; // Example weight in kg
-  double _maxWeight = 5000.0; // Maximum weight capacity
+  Timer? _statusTimer;
+  DeviceStatusModel? _deviceStatus;
+  double _currentWeight = 0.0;
+  double _maxWeight =
+      1000.0; // Default fallback, akan diupdate dari SettingsProvider
+
+  @override
+  void initState() {
+    super.initState();
+    // Load status pertama kali dan setup auto-refresh
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDeviceStatus();
+      _loadMaxWeight();
+      // Auto-refresh setiap 1 detik
+      _statusTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _loadDeviceStatus();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadDeviceStatus() async {
+    final deviceProvider = context.read<DeviceProvider>();
+    if (!deviceProvider.isConnected) {
+      return;
+    }
+
+    try {
+      final status = await deviceProvider.loadDeviceStatus();
+      if (status != null && mounted) {
+        setState(() {
+          _deviceStatus = status;
+          _currentWeight = status.currentWeight;
+        });
+
+        // Check overload with max weight for notification
+        final settingsProvider = context.read<SettingsProvider>();
+        final maxWeight = settingsProvider.maxWeight ?? _maxWeight;
+        await deviceProvider.checkOverloadWithMaxWeight(maxWeight);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadMaxWeight() async {
+    final settingsProvider = context.read<SettingsProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+    if (deviceProvider.isConnected) {
+      try {
+        await settingsProvider.loadMaxWeight(deviceId: deviceProvider.deviceId);
+        if (mounted) {
+          // Update _maxWeight dari SettingsProvider jika tersedia
+          if (settingsProvider.maxWeight != null) {
+            setState(() {
+              _maxWeight = settingsProvider.maxWeight!;
+            });
+          }
+        }
+      } catch (_) {
+        // Tetap gunakan nilai default jika ada error
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,46 +116,93 @@ class _ControllerScreenState extends State<ControllerScreen> {
                       left: isSmallScreen ? 16.0 : 24.0,
                       right: isSmallScreen ? 16.0 : 24.0,
                     ),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _isPowerOn
-                              ? Colors.green.withOpacity(0.2)
-                              : Colors.grey.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _isPowerOn ? Colors.green : Colors.grey,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Overload Warning
+                        if (_deviceStatus?.isOverload == true)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.warning,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'OVERLOAD!',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          const SizedBox.shrink(),
+                        // Status Indicator
+                        Row(
                           children: [
                             Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: _isPowerOn ? Colors.green : Colors.grey,
-                                shape: BoxShape.circle,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _isPowerOn ? 'Aktif' : 'Nonaktif',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
+                              decoration: BoxDecoration(
+                                color: (_deviceStatus?.motorEnabled ?? false)
+                                    ? Colors.green.withOpacity(0.2)
+                                    : Colors.grey.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: (_deviceStatus?.motorEnabled ?? false)
+                                      ? Colors.green
+                                      : Colors.grey,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          (_deviceStatus?.motorEnabled ?? false)
+                                          ? Colors.green
+                                          : Colors.grey,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    (_deviceStatus?.motorEnabled ?? false)
+                                        ? 'Aktif'
+                                        : 'Nonaktif',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
+                      ],
                     ),
                   ),
                   Expanded(
@@ -96,6 +213,7 @@ class _ControllerScreenState extends State<ControllerScreen> {
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           // Weight Display
                           Text(
@@ -105,105 +223,170 @@ class _ControllerScreenState extends State<ControllerScreen> {
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                          SizedBox(height: isSmallScreen ? 12 : 16),
+                          SizedBox(height: isSmallScreen ? 8 : 12),
                           // Current Weight
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _currentWeight.toStringAsFixed(1),
-                                style: theme.textTheme.displayLarge?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: isSmallScreen ? 48 : 64,
-                                ),
-                              ),
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  top: isSmallScreen ? 12 : 16,
-                                ),
-                                child: Text(
-                                  ' kg',
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    color: Colors.white.withOpacity(0.8),
-                                    fontSize: isSmallScreen ? 18 : 22,
+                          Consumer<DeviceProvider>(
+                            builder: (context, deviceProv, _) {
+                              final currentWeight =
+                                  _deviceStatus?.currentWeight ??
+                                  _currentWeight;
+                              final isOverload =
+                                  _deviceStatus?.isOverload ?? false;
+
+                              return Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    currentWeight.toStringAsFixed(1),
+                                    style: theme.textTheme.displayLarge
+                                        ?.copyWith(
+                                          color: isOverload
+                                              ? Colors.red.shade300
+                                              : Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: isSmallScreen ? 48 : 64,
+                                        ),
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: isSmallScreen ? 20 : 32),
-                          // Weight Progress Bar
-                          Container(
-                            width: screenWidth * 0.8,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: FractionallySizedBox(
-                              alignment: Alignment.centerLeft,
-                              widthFactor: _currentWeight / _maxWeight,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.white,
-                                      Colors.white.withOpacity(0.8),
-                                    ],
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      top: isSmallScreen ? 12 : 16,
+                                    ),
+                                    child: Text(
+                                      ' gram',
+                                      style: theme.textTheme.titleLarge
+                                          ?.copyWith(
+                                            color: Colors.white.withOpacity(
+                                              0.8,
+                                            ),
+                                            fontSize: isSmallScreen ? 18 : 22,
+                                          ),
+                                    ),
                                   ),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          // Weight Info
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '0 kg',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.white.withOpacity(0.7),
-                                ),
-                              ),
-                              Text(
-                                '${_maxWeight.toInt()} kg',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.white.withOpacity(0.7),
-                                ),
-                              ),
-                            ],
+                                ],
+                              );
+                            },
                           ),
                           SizedBox(height: isSmallScreen ? 16 : 24),
-                          // Additional Info Cards
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _InfoCard(
-                                  icon: Icons.straighten,
-                                  label: 'Berat Maks',
-                                  value: '${_maxWeight.toInt()} kg',
-                                  theme: theme,
-                                  isSmallScreen: isSmallScreen,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _InfoCard(
-                                  icon: Icons.percent,
-                                  label: 'Kapasitas',
-                                  value:
-                                      '${((_currentWeight / _maxWeight) * 100).toStringAsFixed(1)}%',
-                                  theme: theme,
-                                  isSmallScreen: isSmallScreen,
-                                ),
-                              ),
-                            ],
+                          // Weight Progress Bar
+                          Consumer2<DeviceProvider, SettingsProvider>(
+                            builder: (context, deviceProv, settingsProv, _) {
+                              // Selalu gunakan maxWeight dari SettingsProvider jika tersedia
+                              final maxWeight =
+                                  settingsProv.maxWeight ?? _maxWeight;
+                              final currentWeight =
+                                  _deviceStatus?.currentWeight ??
+                                  _currentWeight;
+                              final isOverload =
+                                  _deviceStatus?.isOverload ?? false;
+                              final progress = maxWeight > 0
+                                  ? (currentWeight / maxWeight).clamp(0.0, 1.0)
+                                  : 0.0;
+
+                              return Column(
+                                children: [
+                                  Container(
+                                    width: screenWidth * 0.8,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor: progress,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: isOverload
+                                                ? [
+                                                    Colors.red,
+                                                    Colors.red.withOpacity(0.8),
+                                                  ]
+                                                : [
+                                                    Colors.white,
+                                                    Colors.white.withOpacity(
+                                                      0.8,
+                                                    ),
+                                                  ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Weight Info
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '0 gram',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: Colors.white.withOpacity(
+                                                0.7,
+                                              ),
+                                            ),
+                                      ),
+                                      Text(
+                                        '${maxWeight.toInt()} gram',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: Colors.white.withOpacity(
+                                                0.7,
+                                              ),
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
                           ),
-                          SizedBox(height: isSmallScreen ? 8 : 16),
+                          SizedBox(height: isSmallScreen ? 12 : 16),
+                          // Additional Info Cards
+                          Consumer2<DeviceProvider, SettingsProvider>(
+                            builder: (context, deviceProv, settingsProv, _) {
+                              final maxWeight =
+                                  settingsProv.maxWeight ?? _maxWeight;
+                              final currentWeight =
+                                  _deviceStatus?.currentWeight ??
+                                  _currentWeight;
+                              final capacity = maxWeight > 0
+                                  ? ((currentWeight / maxWeight) * 100)
+                                        .toStringAsFixed(1)
+                                  : '0.0';
+
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: _InfoCard(
+                                      icon: Icons.straighten,
+                                      label: 'Berat Maks',
+                                      value: '${maxWeight.toInt()} gram',
+                                      theme: theme,
+                                      isSmallScreen: isSmallScreen,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _InfoCard(
+                                      icon: Icons.percent,
+                                      label: 'Kapasitas',
+                                      value: '$capacity%',
+                                      theme: theme,
+                                      isSmallScreen: isSmallScreen,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          SizedBox(height: isSmallScreen ? 4 : 8),
                         ],
                       ),
                     ),
@@ -240,7 +423,6 @@ class _ControllerScreenState extends State<ControllerScreen> {
                       children: [
                         // D-pad Section
                         Expanded(
-                          flex: 3,
                           child: SingleChildScrollView(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -252,150 +434,110 @@ class _ControllerScreenState extends State<ControllerScreen> {
                                   ),
                                 ),
                                 SizedBox(height: isCompact ? 12 : 20),
-                                // Up Button
-                                DpadButton(
-                                  icon: Icons.keyboard_arrow_up,
-                                  onPressed: () {
-                                    _handleDirection('up');
+                                // Up Button (Forward)
+                                Consumer<ControlProvider>(
+                                  builder: (context, cp, _) {
+                                    return DpadButton(
+                                      icon: Icons.keyboard_arrow_up,
+                                      onPressed: cp.isLoading
+                                          ? null
+                                          : () {
+                                              _handleForward(context);
+                                            },
+                                      theme: theme,
+                                      size: isCompact ? 50 : 60,
+                                    );
                                   },
-                                  theme: theme,
-                                  size: isCompact ? 50 : 60,
                                 ),
                                 SizedBox(height: isCompact ? 6 : 8),
-                                // Left, Center, Right Buttons
+                                // Left and Right Buttons Row
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    DpadButton(
-                                      icon: Icons.keyboard_arrow_left,
-                                      onPressed: () {
-                                        _handleDirection('left');
+                                    // Left Button
+                                    Consumer<ControlProvider>(
+                                      builder: (context, cp, _) {
+                                        return DpadButton(
+                                          icon: Icons.keyboard_arrow_left,
+                                          onPressed: cp.isLoading
+                                              ? null
+                                              : () {
+                                                  _handleLeft(context);
+                                                },
+                                          theme: theme,
+                                          size: isCompact ? 50 : 60,
+                                        );
                                       },
-                                      theme: theme,
-                                      size: isCompact ? 50 : 60,
                                     ),
-                                    SizedBox(width: isCompact ? 8 : 12),
-                                    // Center indicator or stop button
-                                    Container(
-                                      width: isCompact ? 50 : 60,
-                                      height: isCompact ? 50 : 60,
-                                      decoration: BoxDecoration(
-                                        color:
-                                            theme.colorScheme.primaryContainer,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.stop,
-                                        color: theme
-                                            .colorScheme
-                                            .onPrimaryContainer,
-                                        size: isCompact ? 20 : 24,
-                                      ),
-                                    ),
-                                    SizedBox(width: isCompact ? 8 : 12),
-                                    DpadButton(
-                                      icon: Icons.keyboard_arrow_right,
-                                      onPressed: () {
-                                        _handleDirection('right');
+                                    SizedBox(width: isCompact ? 12 : 16),
+                                    // Stop Button (Center)
+                                    Consumer<ControlProvider>(
+                                      builder: (context, cp, _) {
+                                        return Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: cp.isLoading
+                                                ? null
+                                                : () {
+                                                    _handleStop(context);
+                                                  },
+                                            borderRadius: BorderRadius.circular(
+                                              (isCompact ? 50 : 60) / 2,
+                                            ),
+                                            child: Container(
+                                              width: isCompact ? 50 : 60,
+                                              height: isCompact ? 50 : 60,
+                                              decoration: BoxDecoration(
+                                                color: theme
+                                                    .colorScheme
+                                                    .errorContainer,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Icon(
+                                                Icons.stop,
+                                                color: theme
+                                                    .colorScheme
+                                                    .onErrorContainer,
+                                                size: isCompact ? 20 : 24,
+                                              ),
+                                            ),
+                                          ),
+                                        );
                                       },
-                                      theme: theme,
-                                      size: isCompact ? 50 : 60,
+                                    ),
+                                    SizedBox(width: isCompact ? 12 : 16),
+                                    // Right Button
+                                    Consumer<ControlProvider>(
+                                      builder: (context, cp, _) {
+                                        return DpadButton(
+                                          icon: Icons.keyboard_arrow_right,
+                                          onPressed: cp.isLoading
+                                              ? null
+                                              : () {
+                                                  _handleRight(context);
+                                                },
+                                          theme: theme,
+                                          size: isCompact ? 50 : 60,
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),
                                 SizedBox(height: isCompact ? 6 : 8),
-                                // Down Button
-                                DpadButton(
-                                  icon: Icons.keyboard_arrow_down,
-                                  onPressed: () {
-                                    _handleDirection('down');
+                                // Down Button (Reverse)
+                                Consumer<ControlProvider>(
+                                  builder: (context, cp, _) {
+                                    return DpadButton(
+                                      icon: Icons.keyboard_arrow_down,
+                                      onPressed: cp.isLoading
+                                          ? null
+                                          : () {
+                                              _handleReverse(context);
+                                            },
+                                      theme: theme,
+                                      size: isCompact ? 50 : 60,
+                                    );
                                   },
-                                  theme: theme,
-                                  size: isCompact ? 50 : 60,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // Divider
-                        Container(
-                          width: 1,
-                          margin: EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 12 : 16,
-                          ),
-                          color: theme.colorScheme.outline.withOpacity(0.2),
-                        ),
-                        // Power Switch Section
-                        Expanded(
-                          flex: 2,
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Power',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                SizedBox(height: isCompact ? 16 : 24),
-                                // Power Switch Container
-                                Container(
-                                  padding: EdgeInsets.all(isCompact ? 16 : 24),
-                                  decoration: BoxDecoration(
-                                    color: _isPowerOn
-                                        ? theme.colorScheme.secondaryContainer
-                                        : theme
-                                              .colorScheme
-                                              .surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: _isPowerOn
-                                          ? theme.colorScheme.secondary
-                                          : theme.colorScheme.outline,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _isPowerOn
-                                            ? Icons.power
-                                            : Icons.power_off,
-                                        size: isCompact ? 36 : 48,
-                                        color: _isPowerOn
-                                            ? theme.colorScheme.secondary
-                                            : theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                      ),
-                                      SizedBox(height: isCompact ? 12 : 16),
-                                      Switch(
-                                        value: _isPowerOn,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _isPowerOn = value;
-                                          });
-                                        },
-                                        activeColor:
-                                            theme.colorScheme.secondary,
-                                      ),
-                                      SizedBox(height: isCompact ? 6 : 8),
-                                      Text(
-                                        _isPowerOn ? 'ON' : 'OFF',
-                                        style: theme.textTheme.titleSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                              color: _isPowerOn
-                                                  ? theme.colorScheme.secondary
-                                                  : theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
                                 ),
                               ],
                             ),
@@ -413,10 +555,189 @@ class _ControllerScreenState extends State<ControllerScreen> {
     );
   }
 
-  void _handleDirection(String direction) {
-    // Handle direction button press
-    debugPrint('Direction: $direction');
-    // You can add API calls or state management here
+  Future<void> _handleForward(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.forward(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah maju berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah maju';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleReverse(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.reverse(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah mundur berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah mundur';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleStop(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.stop(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah stop berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah stop';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleLeft(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.left(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah kiri berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah kiri';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleRight(BuildContext context) async {
+    final controlProvider = context.read<ControlProvider>();
+    final deviceProvider = context.read<DeviceProvider>();
+
+    if (!deviceProvider.isConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Daftarkan perangkat terlebih dahulu'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await controlProvider.right(
+      deviceId: deviceProvider.deviceId,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perintah kanan berhasil dikirim'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      final errorMsg =
+          controlProvider.errorMessage ?? 'Gagal mengirim perintah kanan';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    }
   }
 }
 
@@ -475,46 +796,86 @@ class _InfoCard extends StatelessWidget {
 
 class DpadButton extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final VoidCallback? onPressedDown;
+  final VoidCallback? onPressedUp;
   final ThemeData theme;
   final double size;
 
   const DpadButton({
     super.key,
     required this.icon,
-    required this.onPressed,
+    this.onPressed,
+    this.onPressedDown,
+    this.onPressedUp,
     required this.theme,
     this.size = 60,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isEnabled = onPressed != null || onPressedDown != null;
+
+    Widget button = Opacity(
+      opacity: isEnabled ? 1.0 : 0.5,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          gradient: isEnabled
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.tertiary,
+                  ],
+                )
+              : null,
+          color: isEnabled ? null : theme.colorScheme.surfaceContainerHighest,
+          shape: BoxShape.circle,
+          boxShadow: isEnabled
+              ? [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(
+          icon,
+          color: isEnabled ? Colors.white : theme.colorScheme.onSurfaceVariant,
+          size: size * 0.53,
+        ),
+      ),
+    );
+
+    // Jika ada onPressedDown/onPressedUp, gunakan GestureDetector
+    if (onPressedDown != null || onPressedUp != null) {
+      return GestureDetector(
+        onTapDown: onPressedDown != null ? (_) => onPressedDown!() : null,
+        onTapUp: onPressedUp != null ? (_) => onPressedUp!() : null,
+        onTapCancel: onPressedUp != null ? () => onPressedUp!() : null,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(size / 2),
+            child: button,
+          ),
+        ),
+      );
+    }
+
+    // Jika hanya onPressed, gunakan InkWell biasa
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        onLongPress: onPressed,
         borderRadius: BorderRadius.circular(size / 2),
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [theme.colorScheme.primary, theme.colorScheme.tertiary],
-            ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: theme.colorScheme.primary.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Icon(icon, color: Colors.white, size: size * 0.53),
-        ),
+        child: button,
       ),
     );
   }
