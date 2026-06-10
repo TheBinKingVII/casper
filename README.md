@@ -1,6 +1,5 @@
 # Casper – Smart Vehicle Weighing Controller
-
-GoScale adalah aplikasi Flutter untuk memonitor dan mengendalikan sistem timbang kendaraan berbasis IoT. Aplikasi ini terhubung ke perangkat melalui REST API, menampilkan data berat secara real-time, mengirim perintah kontrol, serta menyimpan log berat untuk audit.
+Casper adalah aplikasi Flutter untuk memonitor dan mengendalikan sistem timbang kendaraan berbasis IoT. Aplikasi ini terhubung ke perangkat melalui REST API, menampilkan data berat secara real-time, mengirim perintah kontrol, serta menyimpan log berat untuk audit.
 
 ## Fitur Utama
 
